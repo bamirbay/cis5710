@@ -1,5 +1,5 @@
         .section .data
-input_string:   .asciz "Hello world!"
+input_string:   .asciz "Hello World!"
 
         # tohost/fromhost are data locations used by Spike
         .align 8
