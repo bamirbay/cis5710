@@ -12,9 +12,9 @@ module divider_unsigned (
 );
   logic [31:0] quotient[33], remainder[33], dividend[33];
 
-  assign quotient[0] = 0;
+  assign quotient[0]  = 0;
   assign remainder[0] = 0;
-  assign dividend[0] = i_dividend;
+  assign dividend[0]  = i_dividend;
 
   genvar i;
 
@@ -25,9 +25,9 @@ module divider_unsigned (
           .i_divisor  (i_divisor),
           .i_remainder(remainder[i]),
           .i_quotient (quotient[i]),
-          .o_dividend (dividend[i + 1]),
-          .o_remainder(remainder[i + 1]),
-          .o_quotient (quotient[i + 1])
+          .o_dividend (dividend[i+1]),
+          .o_remainder(remainder[i+1]),
+          .o_quotient (quotient[i+1])
       );
     end
   endgenerate
