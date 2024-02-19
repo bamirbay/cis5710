@@ -73,7 +73,81 @@ module cla (
     input  wire        cin,
     output wire [31:0] sum
 );
+  wire [31:0] g, p, c;
+  wire [3:0] g8, p8;
+  wire gout, pout;
+  wire [2:0] c8_intermediate;
 
-  // TODO: your code here
+  genvar i;
+
+  generate
+    for (i = 0; i < 32; i = i + 1) begin
+      gp1 gp1_inst (
+          .a(a[i]),
+          .b(b[i]),
+          .g(g[i]),
+          .p(p[i])
+      );
+    end
+  endgenerate
+
+  gp8 gp8_block1 (
+      .gin (g[7:0]),
+      .pin (p[7:0]),
+      .cin (cin),
+      .gout(g8[0]),
+      .pout(p8[0]),
+      .cout(c[7:1])
+  );
+
+  assign c8_intermediate[0] = g8[0] | (p8[0] & cin);
+
+  gp8 gp8_block2 (
+      .gin (g[15:8]),
+      .pin (p[15:8]),
+      .cin (c8_intermediate[0]),
+      .gout(g8[1]),
+      .pout(p8[1]),
+      .cout(c[15:9])
+  );
+
+  assign c8_intermediate[1] = g8[1] | (p8[1] & c8_intermediate[0]);
+
+  gp8 gp8_block3 (
+      .gin (g[23:16]),
+      .pin (p[23:16]),
+      .cin (c8_intermediate[1]),
+      .gout(g8[2]),
+      .pout(p8[2]),
+      .cout(c[23:17])
+  );
+
+  assign c8_intermediate[2] = g8[2] | (p8[1] & c8_intermediate[1]);
+
+  gp8 gp8_block4 (
+      .gin (g[31:24]),
+      .pin (p[31:24]),
+      .cin (c[24]),
+      .gout(g8[3]),
+      .pout(p8[3]),
+      .cout(c[31:25])
+  );
+
+  wire [2:0] dummy_cout;
+  gp4 gp4_inst (
+      .gin (g8),
+      .pin (p8),
+      .cin (cin),
+      .gout(gout),
+      .pout(pout),
+      .cout(dummy_cout)
+  );
+
+  generate
+    for (i = 0; i < 32; i = i + 1) begin
+      assign sum[i] = a[i] ^ b[i] ^ c[i];
+    end
+  endgenerate
+
 
 endmodule
