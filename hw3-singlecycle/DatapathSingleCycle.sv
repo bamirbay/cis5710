@@ -87,7 +87,7 @@ module DatapathSingleCycle (
   };
 
   // U - first two instructions
-  wire [20:0] imm_u = insn_from_imem[31:12] << 12;
+  wire [19:0] imm_u = insn_from_imem[31:12];
 
   wire [`REG_SIZE] imm_i_sext = {{20{imm_i[11]}}, imm_i[11:0]};
   wire [`REG_SIZE] imm_s_sext = {{20{imm_s[11]}}, imm_s[11:0]};
@@ -205,27 +205,36 @@ module DatapathSingleCycle (
     end
   end
 
-  // TODO: instantiate RegFile
+  logic illegal_insn;
+
+  logic we;
+  logic [4:0] rd, rs1, rs2;
+  logic [`REG_SIZE] rd_data, rs1_data, rs2_data;
+
   RegFile rf (
       .rd(insn_rd),
-      .rd_data(),
-      .rs1(),
-      .rs1_data(),
-      .rs2(),
-      .rs2_data(),
+      .rd_data(rd_data),
+      .rs1(rs1),
+      .rs1_data(rs1_data),
+      .rs2(rs2),
+      .rs2_data(rs2_data),
       .clk(clk),
-      .we(),
+      .we(we),
       .rst(rst)
   );
-
-  logic illegal_insn;
 
   always_comb begin
     illegal_insn = 1'b0;
 
     case (insn_opcode)
       OpLui: begin
-
+        rd_data = {{imm_u, 12'b0}};
+        we = 1'b1;
+        pcNext = pcCurrent + 4;
+      end
+      OpAuipc: begin
+        rd_data = pcCurrent + {{12'b0, imm_u}} << 12;
+        pcNext  = pcCurrent + 4;
       end
       default: begin
         illegal_insn = 1'b1;

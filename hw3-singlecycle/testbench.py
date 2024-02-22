@@ -181,9 +181,11 @@ if __name__ == "__main__":
 async def testLui(dut):
     "Run one lui insn"
     asm(dut, 'lui x1,0x12345')
+    print("HELLOOOOOOOOOOOOOo")
     await preTestSetup(dut)
 
     await ClockCycles(dut.clock_proc, 2)
+    print(dut.datapath.rf.regs)
     assert dut.datapath.rf.regs[1].value == 0x12345000, f'failed at cycle {dut.datapath.cycles_current.value.integer}'
 
 @cocotb.test()
@@ -281,7 +283,7 @@ async def testEcall(dut):
 @cocotb.test()
 async def testOneRiscvTest(dut):
     "Use this to run one particular riscv test"
-    await riscvTest(dut, RISCV_TESTS_PATH / 'rv32ui-p-simple')
+    await riscvTest(dut, RISCV_TESTS_PATH / 'rv32ui-p-lui')
 
 async def riscvTest(dut, binaryPath=None):
     "Run the official RISC-V test whose binary lives at `binaryPath`"
