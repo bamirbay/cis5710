@@ -24,8 +24,23 @@ module RegFile (
   localparam int NumRegs = 32;
   logic [`REG_SIZE] regs[NumRegs];
 
-  // TODO: your code here
+  assign regs[0]  = 32'd0;
+  assign rs1_data = regs[rs1];
+  assign rs2_data = regs[rs2];
 
+  genvar i;
+
+  for (i = 1; i < 32; i = i + 1) begin : gen_registers
+    always_ff @(posedge clk) begin
+      if (rst) begin
+        regs[i] <= 32'd0;
+      end else begin
+        if (we && rd == i) begin
+          regs[i] <= rd_data;
+        end
+      end
+    end
+  end
 endmodule
 
 module DatapathSingleCycle (
@@ -40,7 +55,6 @@ module DatapathSingleCycle (
     output wire [`REG_SIZE] store_data_to_dmem,
     output wire [3:0] store_we_to_dmem
 );
-
   // components of the instruction
   wire [6:0] insn_funct7;
   wire [4:0] insn_rs2;
@@ -68,7 +82,12 @@ module DatapathSingleCycle (
 
   // J - unconditional jumps
   wire [20:0] imm_j;
-  assign {imm_j[20], imm_j[10:1], imm_j[11], imm_j[19:12], imm_j[0]} = {insn_from_imem[31:12], 1'b0};
+  assign {imm_j[20], imm_j[10:1], imm_j[11], imm_j[19:12], imm_j[0]} = {
+    insn_from_imem[31:12], 1'b0
+  };
+
+  // U - first two instructions
+  wire [20:0] imm_u = insn_from_imem[31:12] << 12;
 
   wire [`REG_SIZE] imm_i_sext = {{20{imm_i[11]}}, imm_i[11:0]};
   wire [`REG_SIZE] imm_s_sext = {{20{imm_s[11]}}, imm_s[11:0]};
@@ -186,6 +205,19 @@ module DatapathSingleCycle (
     end
   end
 
+  // TODO: instantiate RegFile
+  RegFile rf (
+      .rd(insn_rd),
+      .rd_data(),
+      .rs1(),
+      .rs1_data(),
+      .rs2(),
+      .rs2_data(),
+      .clk(clk),
+      .we(),
+      .rst(rst)
+  );
+
   logic illegal_insn;
 
   always_comb begin
@@ -193,7 +225,7 @@ module DatapathSingleCycle (
 
     case (insn_opcode)
       OpLui: begin
-        // TODO: start here by implementing lui
+
       end
       default: begin
         illegal_insn = 1'b1;
@@ -305,16 +337,16 @@ module RiscvProcessor (
   MemorySingleCycle #(
       .NUM_WORDS(8192)
   ) mem (
-      .rst      (rst),
-      .clock_mem (clock_mem),
+      .rst                (rst),
+      .clock_mem          (clock_mem),
       // imem is read-only
-      .pc_to_imem(pc_to_imem),
-      .insn_from_imem(insn_from_imem),
+      .pc_to_imem         (pc_to_imem),
+      .insn_from_imem     (insn_from_imem),
       // dmem is read-write
-      .addr_to_dmem(mem_data_addr),
+      .addr_to_dmem       (mem_data_addr),
       .load_data_from_dmem(mem_data_loaded_value),
       .store_data_to_dmem (mem_data_to_write),
-      .store_we_to_dmem  (mem_data_we)
+      .store_we_to_dmem   (mem_data_we)
   );
 
   DatapathSingleCycle datapath (
