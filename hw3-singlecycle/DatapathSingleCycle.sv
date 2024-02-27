@@ -213,6 +213,9 @@ module DatapathSingleCycle (
   logic [4:0] rd, rs1, rs2;
   logic [`REG_SIZE] rd_data, rs1_data, rs2_data;
 
+  // Temporary vars needed for multiply instructions
+  logic [63:0] mul_h, mul_hsu, mul_hu;
+
   RegFile rf (
       .rd(rd),
       .rd_data(rd_data),
@@ -398,9 +401,42 @@ module DatapathSingleCycle (
           rs1 = insn_rs1;
           rs2 = insn_rs2;
           rd_data = rs1_data & rs2_data;
+        end else if (insn_mul) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = rs1_data * rs2_data;
+        end else if (insn_mulh) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = 32'({{{32{rs1_data[31]}}, rs1_data} * {{32{rs2_data[31]}}, rs2_data}} >> 32);
+        end else if (insn_mulhsu) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = 32'({{{32{rs1_data[31]}}, rs1_data} * {{32'b0}, rs2_data}} >> 32);
+        end else if (insn_mulhu) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = 32'({{{32'b0}, rs1_data} * {{32'b0}, rs2_data}} >> 32);
         end
         pcNext = pcCurrent + 32'd4;
       end
+      // NOTE:
+      // wire insn_mul    = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b000;
+      // wire insn_mulh   = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b001;
+      // wire insn_mulhsu = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b010;
+      // wire insn_mulhu  = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b011;
+      // wire insn_div    = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b100;
+      // wire insn_divu   = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b101;
+      // wire insn_rem    = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b110;
+      // wire insn_remu   = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b111;
       OpBranch: begin
         if (insn_beq) begin
           // if (rs1 == rs2) pc = pc + imm13
