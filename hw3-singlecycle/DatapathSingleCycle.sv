@@ -238,6 +238,15 @@ module DatapathSingleCycle (
       .sum(cla_sum)
   );
 
+  logic [`REG_SIZE] d_dividend, d_divisor, d_remainder, d_quotient;
+
+  divider_unsigned d (
+      .i_dividend (d_dividend),
+      .i_divisor  (d_divisor),
+      .o_quotient (d_quotient),
+      .o_remainder(d_remainder)
+  );
+
   always_comb begin
     illegal_insn = 1'b0;
 
@@ -252,6 +261,9 @@ module DatapathSingleCycle (
     cla_a = 32'd0;
     cla_b = 32'd0;
     cla_cin = 1'b0;
+
+    d_dividend = 32'd0;
+    d_divisor = 32'd1;
 
     case (insn_opcode)
       OpLui: begin
@@ -425,14 +437,40 @@ module DatapathSingleCycle (
           rs1 = insn_rs1;
           rs2 = insn_rs2;
           rd_data = 32'({{{32'b0}, rs1_data} * {{32'b0}, rs2_data}} >> 32);
+        end else if (insn_div) begin
+          we  = 1'b1;
+          rd  = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+
+          if (rs1_data[31]) begin
+            d_dividend = ~(rs1_data) + 1;
+          end
+          // TODO: finish
+        end else if (insn_divu) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+
+          d_dividend = rs1_data;
+          d_divisor = rs2_data;
+          rd_data = d_quotient;
+        end else if (insn_rem) begin
+          // TODO:
+        end else if (insn_remu) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+
+          d_dividend = rs1_data;
+          d_divisor = rs2_data;
+          rd_data = d_remainder;
         end
         pcNext = pcCurrent + 32'd4;
       end
       // NOTE:
-      // wire insn_mul    = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b000;
-      // wire insn_mulh   = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b001;
-      // wire insn_mulhsu = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b010;
-      // wire insn_mulhu  = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b011;
       // wire insn_div    = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b100;
       // wire insn_divu   = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b101;
       // wire insn_rem    = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b110;
