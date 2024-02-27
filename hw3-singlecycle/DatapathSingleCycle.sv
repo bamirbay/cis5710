@@ -24,23 +24,23 @@ module RegFile (
   localparam int NumRegs = 32;
   logic [`REG_SIZE] regs[NumRegs];
 
-  assign regs[0]  = 32'd0;
+  assign regs[0]  = 32'd0;  // r0 is always zero
   assign rs1_data = regs[rs1];
   assign rs2_data = regs[rs2];
 
-  genvar i;
-
-  for (i = 1; i < 32; i = i + 1) begin : gen_registers
-    always_ff @(posedge clk) begin
-      if (rst) begin
+  always_ff @(posedge clk) begin
+    if (rst) begin
+      integer i;
+      for (i = 0; i < NumRegs; i = i + 1) begin
         regs[i] <= 32'd0;
-      end else begin
-        if (we && rd == i) begin
-          regs[i] <= rd_data;
-        end
+      end
+    end else begin
+      if (we && rd != 0) begin
+        regs[rd] <= rd_data;
       end
     end
   end
+
 endmodule
 
 module DatapathSingleCycle (
@@ -55,6 +55,7 @@ module DatapathSingleCycle (
     output wire [`REG_SIZE] store_data_to_dmem,
     output wire [3:0] store_we_to_dmem
 );
+
   // components of the instruction
   wire [6:0] insn_funct7;
   wire [4:0] insn_rs2;
@@ -86,8 +87,9 @@ module DatapathSingleCycle (
     insn_from_imem[31:12], 1'b0
   };
 
-  // U - first two instructions
-  wire [19:0] imm_u = insn_from_imem[31:12];
+  // U - upper immediates
+  wire [19:0] imm_u;
+  assign imm_u = insn_from_imem[31:12];
 
   wire [`REG_SIZE] imm_i_sext = {{20{imm_i[11]}}, imm_i[11:0]};
   wire [`REG_SIZE] imm_s_sext = {{20{imm_s[11]}}, imm_s[11:0]};
@@ -212,29 +214,256 @@ module DatapathSingleCycle (
   logic [`REG_SIZE] rd_data, rs1_data, rs2_data;
 
   RegFile rf (
-      .rd(insn_rd),
+      .rd(rd),
       .rd_data(rd_data),
       .rs1(rs1),
       .rs1_data(rs1_data),
       .rs2(rs2),
       .rs2_data(rs2_data),
       .clk(clk),
-      .we(we),
-      .rst(rst)
+      .rst(rst),
+      .we(we)
+  );
+
+  logic [`REG_SIZE] cla_a, cla_b, cla_sum;
+  logic cla_cin;
+
+  cla c (
+      .a  (cla_a),
+      .b  (cla_b),
+      .cin(cla_cin),
+      .sum(cla_sum)
   );
 
   always_comb begin
     illegal_insn = 1'b0;
 
+    // Default values
+    halt = 1'b0;
+    we = 1'b0;
+    rd = '0;
+    rd_data = '0;
+    pcNext = pcCurrent + 32'd4;
+    rs1 = insn_rs1;
+    rs2 = insn_rs2;
+    cla_a = 32'd0;
+    cla_b = 32'd0;
+    cla_cin = 1'b0;
+
     case (insn_opcode)
       OpLui: begin
-        rd_data = {{imm_u, 12'b0}};
+        // rd = imm20 << 12
         we = 1'b1;
-        pcNext = pcCurrent + 4;
+        rd = insn_rd;
+        rd_data = {imm_u, 12'd0};
+        pcNext = pcCurrent + 32'd4;
       end
-      OpAuipc: begin
-        rd_data = pcCurrent + {{12'b0, imm_u}} << 12;
-        pcNext  = pcCurrent + 4;
+      OpRegImm: begin
+        if (insn_addi) begin
+          // rd = rs1 + se(imm12)
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+
+          cla_a = rs1_data;
+          cla_b = imm_i_sext;
+          cla_cin = 1'b0;
+          rd_data = cla_sum;
+        end else if (insn_slti) begin
+          // rd = rs1 < imm12 ? 1 : 0
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rd_data = $signed(rs1_data) < $signed(imm_i_sext) ? 32'd1 : 32'd0;
+        end else if (insn_sltiu) begin
+          // rd = rs1 <u imm12 ? 1 : 0
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rd_data = $unsigned(rs1_data) < $unsigned(imm_i_sext) ? 32'd1 : 32'd0;
+        end else if (insn_xori) begin
+          // rd = rs1 ^ imm12
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rd_data = rs1_data ^ imm_i_sext;
+        end else if (insn_ori) begin
+          // rd = rs1 | imm12
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rd_data = rs1_data | imm_i_sext;
+        end else if (insn_andi) begin
+          // rd = rs1 & imm12
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rd_data = rs1_data & imm_i_sext;
+        end else if (insn_slli) begin
+          // rd = rs1 << shamt
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rd_data = rs1_data << imm_shamt;
+        end else if (insn_srli) begin
+          // rd = rs1 >> shamt
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rd_data = rs1_data >> imm_shamt;
+        end else if (insn_srai) begin
+          // rd = rs1 >> shamt
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rd_data = $signed(rs1_data) >>> imm_shamt;
+        end
+        pcNext = pcCurrent + 32'd4;
+      end
+      OpRegReg: begin
+        if (insn_add) begin
+          // rd = rs1 + rs2
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+
+          cla_a = rs1_data;
+          cla_b = rs2_data;
+          cla_cin = 1'b0;
+          rd_data = cla_sum;
+        end else if (insn_sub) begin
+          // rd = rs1 - rs2
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          cla_a = rs1_data;
+          cla_b = ~rs2_data;
+          cla_cin = 1'b1;
+          rd_data = cla_sum;
+        end else if (insn_sll) begin
+          // rd = rs1 << (rs2 & 0x1F)
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = rs1_data << (rs2_data & 32'h1F);
+        end else if (insn_slt) begin
+          // rd = rs1 < rs2 ? 1 : 0
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = $signed(rs1_data) < $signed(rs2_data) ? 32'd1 : 32'd0;
+        end else if (insn_sltu) begin
+          // rd = rs1 <u rs2 ? 1 : 0
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = $unsigned(rs1_data) < $unsigned(rs2_data) ? 32'd1 : 32'd0;
+        end else if (insn_xor) begin
+          // rd = rs1 ^ rs2
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = rs1_data ^ rs2_data;
+        end else if (insn_srl) begin
+          // rd = rs1 >> (rs2 & 0x1F)
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = rs1_data >> (rs2_data & 32'h1F);
+        end else if (insn_sra) begin
+          // rd = rs1 >> (rs2 & 0x1F)
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = $signed(rs1_data) >>> (rs2_data & 32'h1F);
+        end else if (insn_or) begin
+          // rd = rs1 | rs2
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = rs1_data | rs2_data;
+        end else if (insn_and) begin
+          // rd = rs1 & rs2
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          rd_data = rs1_data & rs2_data;
+        end
+        pcNext = pcCurrent + 32'd4;
+      end
+      OpBranch: begin
+        if (insn_beq) begin
+          // if (rs1 == rs2) pc = pc + imm13
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          if (rs1_data == rs2_data) begin
+            pcNext = pcCurrent + imm_b_sext;
+          end else begin
+            pcNext = pcCurrent + 32'd4;
+          end
+        end else if (insn_bne) begin
+          // if (rs1 != rs2) pc = pc + imm13
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          if (rs1_data != rs2_data) begin
+            pcNext = pcCurrent + imm_b_sext;
+          end else begin
+            pcNext = pcCurrent + 32'd4;
+          end
+        end else if (insn_blt) begin
+          // if (rs1 <s rs2) pc = pc + imm13
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          if ($signed(rs1_data) < $signed(rs2_data)) begin
+            pcNext = pcCurrent + imm_b_sext;
+          end else begin
+            pcNext = pcCurrent + 32'd4;
+          end
+        end else if (insn_bge) begin
+          // if (rs1 >=s rs2) pc = pc + imm13
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          if ($signed(rs1_data) >= $signed(rs2_data)) begin
+            pcNext = pcCurrent + imm_b_sext;
+          end else begin
+            pcNext = pcCurrent + 32'd4;
+          end
+        end else if (insn_bltu) begin
+          // if (rs1 <u rs2) pc = pc + imm13
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          if ($unsigned(rs1_data) < $unsigned(rs2_data)) begin
+            pcNext = pcCurrent + imm_b_sext;
+          end else begin
+            pcNext = pcCurrent + 32'd4;
+          end
+        end else if (insn_bgeu) begin
+          // if (rs1 >=u rs2) pc = pc + imm13
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+          if ($unsigned(rs1_data) >= $unsigned(rs2_data)) begin
+            pcNext = pcCurrent + imm_b_sext;
+          end else begin
+            pcNext = pcCurrent + 32'd4;
+          end
+        end
+      end
+      OpEnviron: begin
+        if (insn_ecall) begin
+          // halt
+          halt = 1'b1;
+        end
+        pcNext = pcCurrent + 32'd4;
       end
       default: begin
         illegal_insn = 1'b1;
