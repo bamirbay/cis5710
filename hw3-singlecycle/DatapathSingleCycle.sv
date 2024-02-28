@@ -444,9 +444,19 @@ module DatapathSingleCycle (
           rs2 = insn_rs2;
 
           if (rs1_data[31]) begin
-            d_dividend = ~(rs1_data) + 1;
+            d_dividend = ~rs1_data + 1;
+          end else begin
+            d_dividend = rs1_data;
           end
-          // TODO: finish
+
+          if (rs2_data[31]) begin
+            d_divisor = ~rs2_data + 1;
+          end else begin
+            d_divisor = rs2_data;
+          end
+
+          if (!(rs1_data[31] ^ rs2_data[31]) || (rs2_data == 'd0)) rd_data = d_quotient;
+          else rd_data = ~(d_quotient) + 'd1;
         end else if (insn_divu) begin
           we = 1'b1;
           rd = insn_rd;
@@ -457,7 +467,25 @@ module DatapathSingleCycle (
           d_divisor = rs2_data;
           rd_data = d_quotient;
         end else if (insn_rem) begin
-          // TODO:
+          we  = 1'b1;
+          rd  = insn_rd;
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+
+          // remainder with negative numbers: remainder is pos/neg if dividend is pos/neg
+          if (rs1_data[31]) begin
+            d_dividend = ~rs1_data + 1;
+            rd_data = ~d_remainder + 1;
+          end else begin
+            d_dividend = rs1_data;
+            rd_data = d_remainder;
+          end
+
+          if (rs2_data[31]) begin
+            d_divisor = ~rs2_data + 1;
+          end else begin
+            d_divisor = rs2_data;
+          end
         end else if (insn_remu) begin
           we = 1'b1;
           rd = insn_rd;
