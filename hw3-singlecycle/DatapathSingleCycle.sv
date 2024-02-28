@@ -266,6 +266,7 @@ module DatapathSingleCycle (
     d_divisor = 32'd1;
 
     dmem_addr = 'd0;
+    store_we_to_dmem = 4'b0000;
 
     case (insn_opcode)
       OpLui: begin
