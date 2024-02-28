@@ -315,9 +315,10 @@ async def testStoreLoad(dut):
         lw x2,32(x0) # load address [32] into x2
         ''')
     await preTestSetup(dut)
-
+    
     await ClockCycles(dut.clock_proc, 4)
-    assert dut.datapath.rf.regs[2].value == 0x12345000, f'failed at cycle {dut.datapath.cycles_current.value.integer}'
+    assert dut.datapath.rf.regs[2].value == 0x12345000, f'REGISTER 2: failed at cycle {dut.datapath.cycles_current.value.integer}'
+    assert dut.datapath.rf.regs[1].value == 0x12345000, f'REGISTER 1: failed at cycle {dut.datapath.cycles_current.value.integer}'
 
 @cocotb.test(skip='RVTEST_ALUBR' in os.environ)
 async def dhrystone(dut):

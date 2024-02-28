@@ -696,7 +696,7 @@ module DatapathSingleCycle (
         pcNext = pcCurrent + 32'd4;
       end
       OpMiscMem: begin
-        // pcNext = pcCurrent + 32'd4;
+        pcNext = pcCurrent + 32'd4;
       end
       default: begin
         illegal_insn = 1'b1;
