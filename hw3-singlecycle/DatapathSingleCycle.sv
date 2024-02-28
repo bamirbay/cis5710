@@ -209,18 +209,12 @@ module DatapathSingleCycle (
 
   logic illegal_insn;
 
-  logic [`REG_SIZE] load_addr;
-  assign addr_to_dmem = {load_addr[31:2], 2'b00};
-
-  logic [`REG_SIZE] store_data;
-  assign store_data_to_dmem = store_data[31:0];
+  logic [`REG_SIZE] dmem_addr;
+  assign addr_to_dmem = {dmem_addr[31:2], 2'b00};
 
   logic we;
   logic [4:0] rd, rs1, rs2;
   logic [`REG_SIZE] rd_data, rs1_data, rs2_data;
-
-  // Temporary vars needed for multiply instructions
-  logic [63:0] mul_h, mul_hsu, mul_hu;
 
   RegFile rf (
       .rd(rd),
@@ -271,7 +265,7 @@ module DatapathSingleCycle (
     d_dividend = 32'd0;
     d_divisor = 32'd1;
 
-    load_addr = 'd0;
+    dmem_addr = 'd0;
 
     case (insn_opcode)
       OpLui: begin
@@ -588,9 +582,9 @@ module DatapathSingleCycle (
           rd = insn_rd;
           rs1 = insn_rs1;
 
-          load_addr = rs1_data + imm_i_sext;
+          dmem_addr = rs1_data + imm_i_sext;
 
-          case (load_addr[1:0])
+          case (dmem_addr[1:0])
             2'b00: rd_data = {{24{load_data_from_dmem[7]}}, load_data_from_dmem[7:0]};
             2'b01: rd_data = {{24{load_data_from_dmem[15]}}, load_data_from_dmem[15:8]};
             2'b10: rd_data = {{24{load_data_from_dmem[23]}}, load_data_from_dmem[23:16]};
@@ -601,9 +595,9 @@ module DatapathSingleCycle (
           rd = insn_rd;
           rs1 = insn_rs1;
 
-          load_addr = rs1_data + imm_i_sext;
+          dmem_addr = rs1_data + imm_i_sext;
 
-          case (load_addr[1])
+          case (dmem_addr[1])
             1'b0: rd_data = {{16{load_data_from_dmem[15]}}, load_data_from_dmem[15:0]};
             1'b1: rd_data = {{16{load_data_from_dmem[31]}}, load_data_from_dmem[31:16]};
           endcase
@@ -612,16 +606,17 @@ module DatapathSingleCycle (
           rd = insn_rd;
           rs1 = insn_rs1;
 
-          load_addr = rs1_data + imm_i_sext;
+          dmem_addr = rs1_data + imm_i_sext;
+
           rd_data = load_data_from_dmem[31:0];
         end else if (insn_lbu) begin
           we = 1'b1;
           rd = insn_rd;
           rs1 = insn_rs1;
 
-          load_addr = rs1_data + imm_i_sext;
+          dmem_addr = rs1_data + imm_i_sext;
 
-          case (load_addr[1:0])
+          case (dmem_addr[1:0])
             2'b00: rd_data = {{24'b0}, load_data_from_dmem[7:0]};
             2'b01: rd_data = {{24'b0}, load_data_from_dmem[15:8]};
             2'b10: rd_data = {{24'b0}, load_data_from_dmem[23:16]};
@@ -632,9 +627,9 @@ module DatapathSingleCycle (
           rd = insn_rd;
           rs1 = insn_rs1;
 
-          load_addr = rs1_data + imm_i_sext;
+          dmem_addr = rs1_data + imm_i_sext;
 
-          case (load_addr[1])
+          case (dmem_addr[1])
             1'b0: rd_data = {{16'b0}, load_data_from_dmem[15:0]};
             1'b1: rd_data = {{16'b0}, load_data_from_dmem[31:16]};
           endcase
@@ -646,10 +641,53 @@ module DatapathSingleCycle (
       // wire insn_sw = insn_opcode == OpStore && insn_from_imem[14:12] == 3'b010;
       OpStore: begin
         if (insn_sb) begin
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
 
+          dmem_addr = rs1_data + imm_s_sext;
+          case (dmem_addr[1:0])
+            2'b00: begin
+              store_data_to_dmem[7:0] = rs2_data[7:0];
+              store_we_to_dmem = 4'b0001;
+            end
+            2'b01: begin
+              store_data_to_dmem[15:8] = rs2_data[7:0];
+              store_we_to_dmem = 4'b0010;
+            end
+            2'b10: begin
+              store_data_to_dmem[23:16] = rs2_data[7:0];
+              store_we_to_dmem = 4'b0100;
+            end
+            2'b11: begin
+              store_data_to_dmem[31:24] = rs2_data[7:0];
+              store_we_to_dmem = 4'b1000;
+            end
+          endcase
+        end else if (insn_sh) begin
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+
+          dmem_addr = rs1_data + imm_s_sext;
+          case (dmem_addr[1])
+            1'b0: begin
+              store_data_to_dmem[15:0] = rs2_data[15:0];
+              store_we_to_dmem = 4'b0011;
+            end
+            1'b1: begin
+              store_data_to_dmem[31:16] = rs2_data[15:0];
+              store_we_to_dmem = 4'b1100;
+            end
+          endcase
+        end else if (insn_sw) begin
+          rs1 = insn_rs1;
+          rs2 = insn_rs2;
+
+          dmem_addr = rs1_data + imm_s_sext;
+          store_data_to_dmem[31:0] = rs2_data;
+          store_we_to_dmem = 4'b1111;
         end
+        pcNext = pcCurrent + 32'd4;
       end
-
       OpEnviron: begin
         if (insn_ecall) begin
           // halt
@@ -659,6 +697,9 @@ module DatapathSingleCycle (
       end
       default: begin
         illegal_insn = 1'b1;
+      end
+      OpMiscMem: begin
+        pcNext = pcCurrent + 32'd4;
       end
     endcase
   end
