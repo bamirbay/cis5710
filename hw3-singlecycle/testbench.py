@@ -284,7 +284,7 @@ async def testEcall(dut):
 async def testOneRiscvTest(dut):
     # NOTE:
     "Use this to run one particular riscv test"
-    await riscvTest(dut, RISCV_TESTS_PATH / 'rv32um-p-rem')
+    await riscvTest(dut, RISCV_TESTS_PATH / 'rv32ui-p-lhu')
 
 async def riscvTest(dut, binaryPath=None):
     "Run the official RISC-V test whose binary lives at `binaryPath`"

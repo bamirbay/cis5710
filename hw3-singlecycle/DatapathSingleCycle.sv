@@ -209,6 +209,12 @@ module DatapathSingleCycle (
 
   logic illegal_insn;
 
+  logic [`REG_SIZE] load_addr;
+  assign addr_to_dmem = {load_addr[31:2], 2'b00};
+
+  logic [`REG_SIZE] store_data;
+  assign store_data_to_dmem = store_data[31:0];
+
   logic we;
   logic [4:0] rd, rs1, rs2;
   logic [`REG_SIZE] rd_data, rs1_data, rs2_data;
@@ -265,6 +271,8 @@ module DatapathSingleCycle (
     d_dividend = 32'd0;
     d_divisor = 32'd1;
 
+    load_addr = 'd0;
+
     case (insn_opcode)
       OpLui: begin
         // rd = imm20 << 12
@@ -272,6 +280,11 @@ module DatapathSingleCycle (
         rd = insn_rd;
         rd_data = {imm_u, 12'd0};
         pcNext = pcCurrent + 32'd4;
+      end
+      OpAuipc: begin
+        we = 1'b1;
+        rd = insn_rd;
+        rd_data = pcCurrent + {imm_u, 12'h0};
       end
       OpRegImm: begin
         if (insn_addi) begin
@@ -498,11 +511,20 @@ module DatapathSingleCycle (
         end
         pcNext = pcCurrent + 32'd4;
       end
-      // NOTE:
-      // wire insn_div    = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b100;
-      // wire insn_divu   = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b101;
-      // wire insn_rem    = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b110;
-      // wire insn_remu   = insn_opcode == OpRegReg && insn_from_imem[31:25] == 7'd1 && insn_from_imem[14:12] == 3'b111;
+      OpJal: begin
+        we = 1'b1;
+        rd = insn_rd;
+        rd_data = pcCurrent + 'd4;
+        pcNext = pcCurrent + imm_j_sext;
+      end
+      OpJalr: begin
+        we = 1'b1;
+        rd = insn_rd;
+        rd_data = pcCurrent + 'd4;
+
+        rs1 = insn_rs1;
+        pcNext = (rs1_data + imm_i_sext) & ~32'h1;
+      end
       OpBranch: begin
         if (insn_beq) begin
           // if (rs1 == rs2) pc = pc + imm13
@@ -560,6 +582,74 @@ module DatapathSingleCycle (
           end
         end
       end
+      OpLoad: begin
+        if (insn_lb) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+
+          load_addr = rs1_data + imm_i_sext;
+
+          case (load_addr[1:0])
+            2'b00: rd_data = {{24{load_data_from_dmem[7]}}, load_data_from_dmem[7:0]};
+            2'b01: rd_data = {{24{load_data_from_dmem[15]}}, load_data_from_dmem[15:8]};
+            2'b10: rd_data = {{24{load_data_from_dmem[23]}}, load_data_from_dmem[23:16]};
+            2'b11: rd_data = {{24{load_data_from_dmem[31]}}, load_data_from_dmem[31:24]};
+          endcase
+        end else if (insn_lh) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+
+          load_addr = rs1_data + imm_i_sext;
+
+          case (load_addr[1])
+            1'b0: rd_data = {{16{load_data_from_dmem[15]}}, load_data_from_dmem[15:0]};
+            1'b1: rd_data = {{16{load_data_from_dmem[31]}}, load_data_from_dmem[31:16]};
+          endcase
+        end else if (insn_lw) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+
+          load_addr = rs1_data + imm_i_sext;
+          rd_data = load_data_from_dmem[31:0];
+        end else if (insn_lbu) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+
+          load_addr = rs1_data + imm_i_sext;
+
+          case (load_addr[1:0])
+            2'b00: rd_data = {{24'b0}, load_data_from_dmem[7:0]};
+            2'b01: rd_data = {{24'b0}, load_data_from_dmem[15:8]};
+            2'b10: rd_data = {{24'b0}, load_data_from_dmem[23:16]};
+            2'b11: rd_data = {{24'b0}, load_data_from_dmem[31:24]};
+          endcase
+        end else if (insn_lhu) begin
+          we = 1'b1;
+          rd = insn_rd;
+          rs1 = insn_rs1;
+
+          load_addr = rs1_data + imm_i_sext;
+
+          case (load_addr[1])
+            1'b0: rd_data = {{16'b0}, load_data_from_dmem[15:0]};
+            1'b1: rd_data = {{16'b0}, load_data_from_dmem[31:16]};
+          endcase
+        end
+        pcNext = pcCurrent + 32'd4;
+      end
+      // wire insn_sb = insn_opcode == OpStore && insn_from_imem[14:12] == 3'b000;
+      // wire insn_sh = insn_opcode == OpStore && insn_from_imem[14:12] == 3'b001;
+      // wire insn_sw = insn_opcode == OpStore && insn_from_imem[14:12] == 3'b010;
+      OpStore: begin
+        if (insn_sb) begin
+
+        end
+      end
+
       OpEnviron: begin
         if (insn_ecall) begin
           // halt
